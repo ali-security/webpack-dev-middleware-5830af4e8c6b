@@ -1,0 +1,98 @@
+name: seal-ci
+
+on:
+  workflow_dispatch:
+    inputs:
+      test-filter:
+        description: "Optional jest test path/name filter"
+        required: false
+        default: ""
+        type: string
+
+jobs:
+  test:
+    name: Test - ${{ matrix.os }} - Node ${{ matrix.node-version }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        node-version: ["12", "10", "8", "6"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Set git to use LF
+        if: runner.os == 'Windows'
+        shell: bash
+        run: git config --global core.autocrlf input
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 12.20.0 for install
+        uses: actions/setup-node@v4
+        with:
+          node-version: "12.20.0"
+          architecture: ${{ runner.os == 'macOS' && 'x64' || '' }}
+
+      - name: Install npm 6.14.9
+        shell: bash
+        run: npm i -g npm@6.14.9
+
+      - name: Show install toolchain versions
+        shell: bash
+        run: node -v && npm -v
+
+      - name: Install dependencies
+        shell: bash
+        run: npm ci
+
+      - name: Switch to Node.js ${{ matrix.node-version }} for tests
+        if: matrix.node-version != '12'
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          architecture: ${{ runner.os == 'macOS' && 'x64' || '' }}
+
+      - name: Show test Node.js version
+        shell: bash
+        run: node -v
+
+      - name: Run tests (jest)
+        shell: bash
+        run: node node_modules/jest/bin/jest.js --ci --verbose ${{ inputs.test-filter }}
+
+  pack:
+    name: Pack
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 12.20.0
+        uses: actions/setup-node@v4
+        with:
+          node-version: "12.20.0"
+
+      - name: Install npm 6.14.9
+        shell: bash
+        run: npm i -g npm@6.14.9
+
+      - name: Show toolchain versions
+        shell: bash
+        run: node -v && npm -v
+
+      - name: Pack
+        shell: bash
+        run: npm pack
+
+      - name: Check tarball
+        shell: bash
+        run: ls -la webpack-dev-middleware-3.7.3.tgz
+
+      - name: Upload tarball
+        uses: actions/upload-artifact@v4
+        with:
+          name: webpack-dev-middleware-tgz
+          path: webpack-dev-middleware-3.7.3.tgz
+          if-no-files-found: error
