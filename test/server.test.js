@@ -172,6 +172,88 @@ describe('Server', () => {
     });
   });
 
+  // @see https://github.com/webpack/webpack-dev-middleware/security/advisories/GHSA-g84c-rxfj-3j2c
+  describe('should not allow path traversal when publicPath has no trailing slash', () => {
+    const rootPath = path.resolve(
+      __dirname,
+      './outputs/traversal-no-slash-public-path'
+    );
+    const outputPath = path.resolve(rootPath, 'dist');
+
+    beforeAll((done) => {
+      app = express();
+      const compiler = webpack({
+        ...webpackConfig,
+        output: {
+          filename: 'bundle.js',
+          path: outputPath,
+        },
+      });
+      instance = middleware(compiler, {
+        stats: 'errors-only',
+        logLevel,
+        publicPath: '/static',
+      });
+      app.use(instance);
+      listen = listenShorthand(done);
+
+      instance.fileSystem.mkdirpSync(outputPath);
+      instance.fileSystem.writeFileSync(
+        path.resolve(outputPath, 'index.html'),
+        'HTML'
+      );
+      // A sensitive file placed one level above the served output root.
+      instance.fileSystem.writeFileSync(
+        path.resolve(rootPath, 'secret.txt'),
+        'TOP SECRET'
+      );
+    });
+    afterAll(close);
+
+    it('should serve a legitimate file under the "/static" prefix', (done) => {
+      request(app)
+        .get('/static/index.html')
+        .expect(200, done);
+    });
+
+    it('should serve the bundle under the "/static" prefix', (done) => {
+      request(app)
+        .get('/static/bundle.js')
+        .expect('Content-Type', 'application/javascript; charset=UTF-8')
+        .expect(200, /console\.log\('Hey\.'\)/, done);
+    });
+
+    it('should not allow to get files above root', (done) => {
+      request(app)
+        .get('/static../secret.txt')
+        .expect('Content-Type', 'text/html; charset=utf-8')
+        .expect((res) => {
+          expect(res.text).not.toMatch(/TOP SECRET/);
+        })
+        .expect(404, done);
+    });
+
+    it('should not allow to get files above root using an encoded slash', (done) => {
+      request(app)
+        .get('/static..%2fsecret.txt')
+        .expect('Content-Type', 'text/html; charset=utf-8')
+        .expect((res) => {
+          expect(res.text).not.toMatch(/TOP SECRET/);
+        })
+        .expect(404, done);
+    });
+
+    it('should not allow to get files above root using an encoded backslash', (done) => {
+      request(app)
+        .get('/static..%5csecret.txt')
+        .expect('Content-Type', 'text/html; charset=utf-8')
+        .expect((res) => {
+          expect(res.text).not.toMatch(/TOP SECRET/);
+        })
+        .expect(404, done);
+    });
+  });
+
   describe('accepted methods', () => {
     beforeAll((done) => {
       app = express();

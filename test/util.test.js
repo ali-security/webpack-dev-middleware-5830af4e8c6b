@@ -28,6 +28,72 @@ describe('GetFilenameFromUrl', () => {
       publicPath: '/',
       expected: "/file.js",
     },
+    // @see https://github.com/webpack/webpack-dev-middleware/security/advisories/GHSA-g84c-rxfj-3j2c
+    // publicPath without a trailing slash must not allow escaping outputPath
+    {
+      url: '/static/index.html',
+      outputPath: '/root/dist',
+      publicPath: '/static',
+      expected: '/root/dist/index.html',
+    },
+    {
+      url: '/static/..foo.js',
+      outputPath: '/root/dist',
+      publicPath: '/static',
+      expected: '/root/dist/..foo.js',
+    },
+    {
+      url: '/static../secret.txt',
+      outputPath: '/root/dist',
+      publicPath: '/static',
+      expected: false,
+    },
+    {
+      url: '/static../../etc/passwd',
+      outputPath: '/root/dist',
+      publicPath: '/static',
+      expected: false,
+    },
+    {
+      url: '/static..%2fsecret.txt',
+      outputPath: '/root/dist',
+      publicPath: '/static',
+      expected: false,
+    },
+    {
+      url: '/static..%5csecret.txt',
+      outputPath: '/root/dist',
+      publicPath: '/static',
+      expected: false,
+    },
+    {
+      url: '/static..',
+      outputPath: '/root/dist',
+      publicPath: '/static',
+      expected: false,
+    },
+    {
+      url: '/static../secret.txt',
+      outputPath: '/root/dist',
+      publicPath: 'http://localhost:8080/static',
+      expected: false,
+    },
+    {
+      url: '/js../secret.txt',
+      compilers: [
+        {
+          outputPath: '/root/foo',
+          options: { output: { publicPath: '/js' } },
+        },
+        {
+          outputPath: '/root/bar',
+          options: { output: { publicPath: '/css' } },
+        },
+      ],
+      outputPath: '/root/dist',
+      publicPath: '/',
+      expected: false,
+    },
     {
       url: '/foo.js',
       outputPath: '/',
